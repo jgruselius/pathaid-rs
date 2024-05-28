@@ -1,0 +1,16 @@
+[package]
+name = "pathology-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Joel Gruselius"]
+description = "Simple tool to validate the PATH environment variable"
+
+[dependencies]
+anyhow = "*"
+colored = "2"
+clap = { version = "4" }
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "s"
