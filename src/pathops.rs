@@ -27,59 +27,62 @@ get_duplicates(string) -> list<string>
 # return all unique entries
 dedup(string) -> list<string>
 
-TODO:
-    [ ] HashSet doesn't maintain order, re-implement
 */
 
+use anyhow::{anyhow, ensure, Context, Result};
+use std::collections::HashSet;
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::ffi::OsString;
-use std::collections::HashSet;
-use anyhow::{Context, ensure, Result};
 
 // Get the PATH environment variable
-pub fn get_path() -> Result<OsString> {
-    env::var_os("PATH").context("unable to fetch PATH environment variable")
+pub fn get_path() -> Result<String> {
+    let path = env::var_os("PATH").context("unable to fetch PATH environment variable")?;
+    path.into_string()
+        .map_err(|_| anyhow!("OS string contains symbols this program can't deal with"))
 }
 
 // Split the string on ':' or ';' (Windows)
-pub fn split(path_var: &OsString) -> Vec<PathBuf> {
-    env::split_paths(path_var).collect()
+pub fn split(path_var: impl AsRef<OsStr>) -> Vec<PathBuf> {
+    env::split_paths(&path_var).collect()
 }
 
-pub fn join(paths: &Vec<PathBuf>) -> Result<OsString> {
-    env::join_paths(paths).context("unable to join path components")
+pub fn join(paths: &Vec<PathBuf>) -> Result<String> {
+    let path = env::join_paths(paths).context("unable to join path components")?;
+    path.into_string()
+        .map_err(|_| anyhow!("OS string contains symbols this program can't deal with"))
 }
 
 // Split and join via HashSet as internal functions for manipulating path:
-fn split_hs(path_var: &OsString) -> HashSet<PathBuf> {
-    env::split_paths(path_var).collect()
+fn split_hs(path_var: impl AsRef<OsStr>) -> HashSet<PathBuf> {
+    env::split_paths(&path_var).collect()
 }
 
-fn join_hs(paths: &HashSet<PathBuf>) -> Result<OsString> {
-    env::join_paths(paths).context("unable to join path components")
+fn join_hs(paths: &HashSet<PathBuf>) -> Result<String> {
+    let path = env::join_paths(paths).context("unable to join path components")?;
+    path.into_string()
+        .map_err(|_| anyhow!("OS string contains symbols this program can't deal with"))
 }
 
 // Check if path exists and is a directory
-pub fn exists(path: &Path) -> bool {
-    match path.canonicalize() {
+pub fn exists(path: impl AsRef<Path>) -> bool {
+    match path.as_ref().canonicalize() {
         Ok(p) => p.exists() && p.is_dir(),
         _ => false,
     }
 }
 
 // Count all executables in a path
-pub fn count_files(path: &Path) -> Result<usize> {
+pub fn count_files(path: impl AsRef<Path>) -> Result<usize> {
     Ok(fs::read_dir(path)?
         .filter_map(|d| d.ok().and_then(|p| p.path().canonicalize().ok()))
         .filter(|p| p.is_file())
-        .count()
-    )
+        .count())
 }
 
 // Check if path contains no executables (special case of count_files = 0)
-pub fn is_empty(path: &Path) -> Result<bool> {
+pub fn is_empty(path: impl AsRef<Path>) -> Result<bool> {
     Ok(count_files(path)? == 0)
 }
 
@@ -114,46 +117,53 @@ pub fn dedup(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 // Verify that addition is not already in path string
-pub fn ensure_unique_addition(path_var: &OsString, addition: &OsString) -> Result<()> {
-    let path_to_add = PathBuf::from(addition);
+pub fn ensure_unique_addition(
+    path_var: impl AsRef<OsStr>,
+    addition: impl AsRef<OsStr>,
+) -> Result<()> {
+    let path_to_add = PathBuf::from(&addition);
     let unique_paths = split_hs(path_var);
     ensure!(
         !unique_paths.contains(&path_to_add),
-        format!("PATH already contains '{}'", addition.to_string_lossy())
+        format!(
+            "PATH already contains '{}'",
+            addition.as_ref().to_string_lossy()
+        )
     );
     Ok(())
 }
 
 // Add addition to the end of path_var
-pub fn append_path(path_var: &OsString, addition: &OsString) -> Result<OsString> {
+pub fn append_path(path_var: impl AsRef<OsStr>, addition: impl AsRef<OsStr>) -> Result<String> {
     // Now add while preserving order:
     let mut paths = split(path_var);
-    paths.push(PathBuf::from(addition));
+    paths.push(PathBuf::from(&addition));
     join(&paths)
 }
 
 // Add addition to the front of path_var
-pub fn prepend_path(path_var: &OsString, addition: &OsString) -> Result<OsString> {
+pub fn prepend_path(path_var: impl AsRef<OsStr>, addition: impl AsRef<OsStr>) -> Result<String> {
     // Now add while preserving order:
     let mut paths = split(path_var);
-    paths.insert(0, PathBuf::from(addition));
+    paths.insert(0, PathBuf::from(&addition));
     join(&paths)
 }
 
 // Combine some tests
-pub fn validate_addition(path_var: &OsString, addition: &OsString) -> Result<()> {
-    let path_to_add = PathBuf::from(addition);
+pub fn validate_addition(path_var: impl AsRef<OsStr>, addition: impl AsRef<OsStr>) -> Result<()> {
+    let path_to_add = Path::new(&addition);
     ensure!(
-        exists(&path_to_add),
-        format!("'{}' is not an existing directory", addition.to_string_lossy())
+        exists(path_to_add),
+        format!(
+            "'{}' is not an existing directory",
+            addition.as_ref().to_string_lossy()
+        )
     );
     ensure_unique_addition(path_var, addition)
 }
 
-
 #[cfg(test)]
 mod tests {
-    use anyhow::{anyhow, Error};
     use super::*;
 
     struct Test {
@@ -164,7 +174,7 @@ mod tests {
         // Entries occurring more than once in paths
         dups: Vec<PathBuf>,
         // Some unique path:
-        addition: OsString,
+        addition: String,
         // An existing path
         exe_dir: PathBuf,
     }
@@ -172,11 +182,17 @@ mod tests {
         fn new() -> Self {
             Self {
                 path: OsString::from("/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/local/bin"),
-                paths: (&["/usr/local/bin", "/usr/local/sbin", "/usr/bin", "/bin", "/usr/local/bin"])
+                paths: (&[
+                    "/usr/local/bin",
+                    "/usr/local/sbin",
+                    "/usr/bin",
+                    "/bin",
+                    "/usr/local/bin",
+                ])
                     .into_iter()
                     .map(|s| PathBuf::from(s))
                     .collect(),
-                addition: OsString::from("/unique/addition"),
+                addition: String::from("/unique/addition"),
                 dups: vec![PathBuf::from("/usr/local/bin")],
                 // Use the directory of the executing program:
                 exe_dir: env::current_exe().unwrap().parent().unwrap().to_path_buf(),
@@ -199,7 +215,7 @@ mod tests {
     #[test]
     fn test_join() {
         let test = Test::new();
-        let joined = join(&test.paths).unwrap();
+        let joined = OsString::from(join(&test.paths).unwrap());
         assert_eq!(joined, test.path)
     }
 
@@ -241,22 +257,16 @@ mod tests {
         let test = Test::new();
         ensure_unique_addition(&test.path, &test.addition).unwrap();
         let existing = test.paths.get(0).unwrap().clone().into_os_string();
-        let res = std::panic::catch_unwind(
-            || ensure_unique_addition(&test.path, &existing).unwrap()
-        );
+        let res =
+            std::panic::catch_unwind(|| ensure_unique_addition(&test.path, &existing).unwrap());
         assert!(res.is_err())
     }
 
     #[test]
     fn test_append_path() {
         let test = Test::new();
-        let delim = if cfg!(windows) {
-            ";"
-        } else {
-            ":"
-        };
-        let mut expected = test.path.clone();
-        expected.push(format!("{}{}", delim, test.addition.to_string_lossy()));
+        let delim = if cfg!(windows) { ";" } else { ":" };
+        let expected = format!("{}{}{}", test.path.to_str().unwrap(), delim, test.addition);
         let res = append_path(&test.path, &test.addition).unwrap();
         assert_eq!(res, expected)
     }
@@ -264,13 +274,8 @@ mod tests {
     #[test]
     fn test_prepend_path() {
         let test = Test::new();
-        let delim = if cfg!(windows) {
-            ";"
-        } else {
-            ":"
-        };
-        let mut expected = OsString::from(format!("{}{}", test.addition.to_string_lossy(), delim));
-        expected.push(&test.path);
+        let delim = if cfg!(windows) { ";" } else { ":" };
+        let expected = format!("{}{}{}", test.addition, delim, test.path.to_str().unwrap());
         let res = prepend_path(&test.path, &test.addition).unwrap();
         assert_eq!(res, expected)
     }

@@ -12,16 +12,14 @@ prepend        add one or more (separated by ':') paths to the front and print r
 
 mod pathops;
 
-use std::env;
-use std::ffi::{OsStr, OsString};
-use std::path::{Display, Path};
-use anyhow::{Context, Result};
-use colored::{ColoredString, Colorize};
+use anyhow::Result;
 use clap::{arg, Command};
+use colored::{ColoredString, Colorize};
+use std::env;
+use std::path::Path;
 
-
-fn fmt_path(path: &Path, level: usize) -> ColoredString {
-    let p = path.to_string_lossy();
+fn fmt_path(path: impl AsRef<Path>, level: usize) -> ColoredString {
+    let p = path.as_ref().to_string_lossy();
     match level {
         0 => p.blue(),
         1 => p.yellow(),
@@ -41,7 +39,7 @@ fn fmt_num(num: usize, level: usize) -> ColoredString {
 }
 fn list_paths() -> Result<()> {
     let path = pathops::get_path()?;
-    let paths = pathops::split(&path);
+    let paths = pathops::split(path);
     for p in paths.iter() {
         println!("{}", fmt_path(p, 0));
     }
@@ -50,7 +48,7 @@ fn list_paths() -> Result<()> {
 
 fn validate() -> Result<()> {
     let path = pathops::get_path()?;
-    let paths = pathops::split(&path);
+    let paths = pathops::split(path);
     let dups = pathops::find_duplicates(&paths);
     if !dups.is_empty() {
         println!("{} duplicate entries found:", fmt_num(dups.len(), 0));
@@ -69,7 +67,7 @@ fn validate() -> Result<()> {
 
 fn count_exes() -> Result<()> {
     let path = pathops::get_path()?;
-    let paths = pathops::split(&path);
+    let paths = pathops::split(path);
     for p in paths.iter() {
         match pathops::count_files(p) {
             Ok(0) => println!("{}: {}", fmt_path(p, 1), 0),
@@ -80,55 +78,45 @@ fn count_exes() -> Result<()> {
     Ok(())
 }
 
-fn append_path(addition: &OsString) -> Result<()> {
+fn append_path(addition: impl AsRef<str>) -> Result<()> {
     let path = pathops::get_path()?;
-
+    let addition = addition.as_ref();
     pathops::validate_addition(&path, addition)?;
     let new_path = pathops::append_path(&path, addition)?;
-    println!("{}", new_path.to_string_lossy());
+    println!("{}", new_path);
 
     Ok(())
 }
 
-fn prepend_path(addition: &OsString) -> Result<()> {
+fn prepend_path(addition: impl AsRef<str>) -> Result<()> {
     let path = pathops::get_path()?;
-
+    let addition = addition.as_ref();
     pathops::validate_addition(&path, addition)?;
     let new_path = pathops::prepend_path(&path, addition)?;
-    println!("{}", new_path.to_string_lossy());
+    println!("{}", new_path);
 
     Ok(())
 }
 
 fn main() -> Result<()> {
-
     let parser = Command::new(env!("CARGO_PKG_NAME"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .version(env!("CARGO_PKG_VERSION"))
-        .subcommand(
-            Command::new("list")
-                .about("List entries")
-        )
-        .subcommand(
-            Command::new("validate")
-                .about("Validate all entries")
-        )
-        .subcommand(
-            Command::new("count")
-                .about("Count executables")
-        )
+        .subcommand(Command::new("list").about("List entries"))
+        .subcommand(Command::new("validate").about("Validate all entries"))
+        .subcommand(Command::new("count").about("Count executables"))
         .subcommand(
             Command::new("append")
                 .about("Append directory")
                 .arg_required_else_help(true)
-                .arg(arg!(<PATH> ... "Stuff to add"))
+                .arg(arg!(<PATH> ... "Stuff to add")),
         )
         .subcommand(
             Command::new("prepend")
                 .about("Prepend directory")
                 .arg_required_else_help(true)
-                .arg(arg!(<PATH> ... "Stuff to add"))
+                .arg(arg!(<PATH> ... "Stuff to add")),
         );
 
     let matches = parser.get_matches();
@@ -136,13 +124,13 @@ fn main() -> Result<()> {
         Some(("validate", _)) => validate()?,
         Some(("count", _)) => count_exes()?,
         Some(("append", subm)) => {
-            let p: OsString = subm.get_one::<String>("PATH").unwrap().to_owned().into();
-            append_path(&p)?;
-        },
+            let p = subm.get_one::<String>("PATH").unwrap();
+            append_path(p)?;
+        }
         Some(("prepend", subm)) => {
-            let p: OsString = subm.get_one::<String>("PATH").unwrap().to_owned().into();
-            prepend_path(&p)?;
-        },
+            let p = subm.get_one::<String>("PATH").unwrap();
+            prepend_path(p)?;
+        }
         _ => list_paths()?,
     }
 
