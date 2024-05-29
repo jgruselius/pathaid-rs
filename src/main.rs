@@ -1,5 +1,7 @@
 /*
-Plan of path tool
+Joel Gruselius 2024
+
+Summary of path tool
 
 # Commmands:
 
@@ -12,10 +14,10 @@ prepend        add one or more (separated by ':') paths to the front and print r
 
 mod pathops;
 
-use std::collections::HashSet;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{arg, Command};
 use colored::{ColoredString, Colorize};
+use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -70,7 +72,7 @@ fn validate() -> Result<()> {
     }
     let dups = pathops::find_duplicates(&paths);
     if !dups.is_empty() {
-        let unique_dups: HashSet<PathBuf> = dups.iter().map(|p| p.clone()).collect();
+        let unique_dups: HashSet<PathBuf> = dups.iter().cloned().collect();
         for p in unique_dups.iter() {
             let n = dups.iter().filter(|&x| x == p).count();
             println!("{} is included {} times", fmt_path(p, 1), n + 1);
@@ -81,13 +83,16 @@ fn validate() -> Result<()> {
         .filter(|p| !dups.contains(p))
         .collect();
     */
-
     let resolved_dups = pathops::find_duplicates_resolved(&paths);
     if !resolved_dups.is_empty() {
-        let unique_dups: HashSet<PathBuf> = resolved_dups.iter().map(|p| p.clone()).collect();
+        let unique_dups: HashSet<PathBuf> = resolved_dups.iter().cloned().collect();
         for p in unique_dups.iter() {
             let n = resolved_dups.iter().filter(|&x| x == p).count();
-            println!("{} is included {} times when entries are resolved", fmt_path(p, 1), n + 1);
+            println!(
+                "{} is included {} times when entries are resolved",
+                fmt_path(p, 1),
+                n + 1
+            );
         }
     }
 
@@ -99,7 +104,10 @@ fn dedup() -> Result<()> {
     let paths = pathops::split(path);
     let resolved_dups = pathops::find_duplicates_resolved(&paths);
     if !resolved_dups.is_empty() {
-        let info = format!("({} resolved duplicate entries removed)\n", resolved_dups.len());
+        let info = format!(
+            "({} resolved duplicate entries removed)\n",
+            resolved_dups.len()
+        );
         eprintln!("{}", info.dimmed());
     }
     let unique = pathops::dedup(&paths);
@@ -148,21 +156,21 @@ fn main() -> Result<()> {
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .version(env!("CARGO_PKG_VERSION"))
-        .subcommand(Command::new("list").about("List entries"))
+        .subcommand(Command::new("list").about("List entries (default)"))
         .subcommand(Command::new("validate").about("Validate all entries"))
         .subcommand(Command::new("dedup").about("Remove any duplicate entries"))
         .subcommand(Command::new("count").about("Count executables"))
         .subcommand(
             Command::new("append")
-                .about("Append directory")
+                .about("Add a directory to end of PATH and print the result")
                 .arg_required_else_help(true)
-                .arg(arg!(<PATH> ... "Stuff to add")),
+                .arg(arg!(<PATH> "directory to add")),
         )
         .subcommand(
             Command::new("prepend")
-                .about("Prepend directory")
+                .about("Add a directory to front of PATH and print the result")
                 .arg_required_else_help(true)
-                .arg(arg!(<PATH> ... "Stuff to add")),
+                .arg(arg!(<PATH> "directory to add")),
         );
 
     let matches = parser.get_matches();

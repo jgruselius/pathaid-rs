@@ -1,32 +1,43 @@
 /*
 Joel Gruselius 2024
 
-# Functions
+Summary of pathops functions
 
 # get the PATH environment variable
-get_path() -> string
+get_path() -> Result<String>
 
-# split the string on ':'
-split(string) -> list<string>
+# split the string on ':' (or ';' on Windows)
+split(OsStr) -> Vec<PathBuf>
+
+# join the paths with ':' (or ';' on Windows) between
+join(Vec<PathBuf>) -> Vec<PathBuf>
 
 # check if path exists and is a directory
-exists(string) -> bool
+exists(Path) -> bool
 
 # check if path contains no executables (case of below)
-is_empty(string) -> bool
+is_empty(Path) -> Result<bool>
 
 # count all executables in a path
-count(string) -> int
+count_files(Path) -> Result<usize>
 
-# check if there are duplicate entries
-has_duplicates(string) -> bool
+# find any duplicate entries
+find_duplicates(Vec<PathBuf>) -> Vec<PathBuf>
 
-# list duplicate entries
-get_duplicates(string) -> list<string>
+# find duplicate any entries after "canonicalizing" them
+find_duplicates_resolved(Vec<PathBuf>) -> Vec<PathBuf>
 
 # return all unique entries
-dedup(string) -> list<string>
+dedup(Vec<PathBuf>) -> Vec<PathBuf>
 
+# add addition to end of PATH and print the results
+append_path(path_var: OsStr, addition: OsStr) -> Result<String>
+
+# add addition to front of PATH and print the results
+prepend_path(path_var: OsStr, addition: OsStr) -> Result<String>
+
+# ensure addition exists and not already present in PATH (when all paths are resolved)
+validate_addition(path_var: OsStr, addition: OsStr) -> Result<()>
 */
 
 use anyhow::{anyhow, ensure, Context, Result};
@@ -141,7 +152,7 @@ pub fn dedup(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 // Verify that addition is not already in path string
-pub fn ensure_unique_addition(
+fn ensure_unique_addition(
     path_var: impl AsRef<OsStr>,
     addition: impl AsRef<OsStr>,
 ) -> Result<()> {
@@ -189,7 +200,7 @@ pub fn prepend_path(path_var: impl AsRef<OsStr>, addition: impl AsRef<OsStr>) ->
     join(&paths)
 }
 
-// Combine some tests
+// Combine some unique-ness and existance check
 pub fn validate_addition(path_var: impl AsRef<OsStr>, addition: impl AsRef<OsStr>) -> Result<()> {
     let path_to_add = Path::new(&addition);
     ensure!(
