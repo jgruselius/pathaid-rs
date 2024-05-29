@@ -42,28 +42,38 @@ fn list_paths() -> Result<()> {
     let path = pathops::get_path()?;
     let paths = pathops::split(path);
     for p in paths.iter() {
-        let res = p
-            .canonicalize()
-            .with_context(|| format!("could not resolve '{}'", p.display()))?;
-        if res.as_os_str() == p.as_os_str() {
-            println!("{}", fmt_path(p, 0));
+        // Print using different format for normal paths, those that refer to some other path,
+        // and non-existing paths:
+        if let Ok(res) = p.canonicalize() {
+            if res.as_os_str() == p.as_os_str() {
+                println!("{}", fmt_path(p, 0));
+            } else {
+                println!("{} -> {}", fmt_path(p, 1), fmt_path(res, 0));
+            }
         } else {
-            println!("{} -> {}", fmt_path(p, 1), fmt_path(res, 0));
+            println!("{}", fmt_path(p, 2));
         }
     }
+
     Ok(())
 }
 
 fn validate() -> Result<()> {
     let path = pathops::get_path()?;
     let paths = pathops::split(path);
+    for p in paths.iter() {
+        if !pathops::exists(p) {
+            println!("{} is not an accessible directory", fmt_path(p, 2));
+        } else if pathops::is_empty(p)? {
+            println!("{} is empty", fmt_path(p, 1));
+        }
+    }
     let dups = pathops::find_duplicates(&paths);
     if !dups.is_empty() {
-        println!("{} duplicate entries found:", fmt_num(dups.len(), 0));
         let unique_dups: HashSet<PathBuf> = dups.iter().map(|p| p.clone()).collect();
         for p in unique_dups.iter() {
             let n = dups.iter().filter(|&x| x == p).count();
-            println!("{} occurs {} times", fmt_path(p, 1), n + 1);
+            println!("{} is included {} times", fmt_path(p, 1), n + 1);
         }
     }
     /* Filter duplicate resolved paths to those that are different when resolved:
@@ -74,21 +84,27 @@ fn validate() -> Result<()> {
 
     let resolved_dups = pathops::find_duplicates_resolved(&paths);
     if !resolved_dups.is_empty() {
-        println!("{} resolved duplicate entries found:", fmt_num(resolved_dups.len(), 0));
         let unique_dups: HashSet<PathBuf> = resolved_dups.iter().map(|p| p.clone()).collect();
         for p in unique_dups.iter() {
             let n = resolved_dups.iter().filter(|&x| x == p).count();
-            println!("{} occurs {} times", fmt_path(p, 1), n + 1);
+            println!("{} is included {} times when entries are resolved", fmt_path(p, 1), n + 1);
         }
     }
 
-    for p in paths.iter() {
-        if !pathops::exists(p) {
-            println!("{} is not an accessible directory", fmt_path(p, 2));
-        } else if pathops::is_empty(p)? {
-            println!("{} is empty", fmt_path(p, 1));
-        }
+    Ok(())
+}
+
+fn dedup() -> Result<()> {
+    let path = pathops::get_path()?;
+    let paths = pathops::split(path);
+    let resolved_dups = pathops::find_duplicates_resolved(&paths);
+    if !resolved_dups.is_empty() {
+        let info = format!("({} resolved duplicate entries removed)\n", resolved_dups.len());
+        eprintln!("{}", info.dimmed());
     }
+    let unique = pathops::dedup(&paths);
+    let new_path = pathops::join(&unique)?;
+    println!("{}", new_path);
 
     Ok(())
 }
@@ -103,6 +119,7 @@ fn count_exes() -> Result<()> {
             _ => println!("{}: --", fmt_path(p, 2)),
         }
     }
+
     Ok(())
 }
 
@@ -133,6 +150,7 @@ fn main() -> Result<()> {
         .version(env!("CARGO_PKG_VERSION"))
         .subcommand(Command::new("list").about("List entries"))
         .subcommand(Command::new("validate").about("Validate all entries"))
+        .subcommand(Command::new("dedup").about("Remove any duplicate entries"))
         .subcommand(Command::new("count").about("Count executables"))
         .subcommand(
             Command::new("append")
@@ -150,6 +168,7 @@ fn main() -> Result<()> {
     let matches = parser.get_matches();
     match matches.subcommand() {
         Some(("validate", _)) => validate()?,
+        Some(("dedup", _)) => dedup()?,
         Some(("count", _)) => count_exes()?,
         Some(("append", subm)) => {
             let p = subm.get_one::<String>("PATH").unwrap();
