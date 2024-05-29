@@ -12,11 +12,12 @@ prepend        add one or more (separated by ':') paths to the front and print r
 
 mod pathops;
 
-use anyhow::Result;
+use std::collections::HashSet;
+use anyhow::{Context, Result};
 use clap::{arg, Command};
 use colored::{ColoredString, Colorize};
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn fmt_path(path: impl AsRef<Path>, level: usize) -> ColoredString {
     let p = path.as_ref().to_string_lossy();
@@ -41,7 +42,14 @@ fn list_paths() -> Result<()> {
     let path = pathops::get_path()?;
     let paths = pathops::split(path);
     for p in paths.iter() {
-        println!("{}", fmt_path(p, 0));
+        let res = p
+            .canonicalize()
+            .with_context(|| format!("could not resolve '{}'", p.display()))?;
+        if res.as_os_str() == p.as_os_str() {
+            println!("{}", fmt_path(p, 0));
+        } else {
+            println!("{} -> {}", fmt_path(p, 1), fmt_path(res, 0));
+        }
     }
     Ok(())
 }
@@ -52,8 +60,28 @@ fn validate() -> Result<()> {
     let dups = pathops::find_duplicates(&paths);
     if !dups.is_empty() {
         println!("{} duplicate entries found:", fmt_num(dups.len(), 0));
-        dups.iter().for_each(|p| println!("{}", fmt_path(p, 1)));
+        let unique_dups: HashSet<PathBuf> = dups.iter().map(|p| p.clone()).collect();
+        for p in unique_dups.iter() {
+            let n = dups.iter().filter(|&x| x == p).count();
+            println!("{} occurs {} times", fmt_path(p, 1), n + 1);
+        }
     }
+    /* Filter duplicate resolved paths to those that are different when resolved:
+    let resolved_dups: Vec<PathBuf> = pathops::find_duplicates_resolved(&paths).into_iter()
+        .filter(|p| !dups.contains(p))
+        .collect();
+    */
+
+    let resolved_dups = pathops::find_duplicates_resolved(&paths);
+    if !resolved_dups.is_empty() {
+        println!("{} resolved duplicate entries found:", fmt_num(resolved_dups.len(), 0));
+        let unique_dups: HashSet<PathBuf> = resolved_dups.iter().map(|p| p.clone()).collect();
+        for p in unique_dups.iter() {
+            let n = resolved_dups.iter().filter(|&x| x == p).count();
+            println!("{} occurs {} times", fmt_path(p, 1), n + 1);
+        }
+    }
+
     for p in paths.iter() {
         if !pathops::exists(p) {
             println!("{} is not an accessible directory", fmt_path(p, 2));

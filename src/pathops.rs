@@ -101,16 +101,40 @@ pub fn find_duplicates(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
     duplicates
 }
 
+// Get elements occurring more than once when resolved
+pub fn find_duplicates_resolved(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut duplicates: Vec<PathBuf> = Vec::new();
+
+    for path in paths {
+        let res = match path.canonicalize() {
+            Ok(p) => p,
+            _ => path.clone(),
+        };
+        if seen.contains(&res) {
+            duplicates.push(res);
+        } else {
+            seen.insert(res);
+        }
+    }
+    duplicates
+}
+
 // Return unique entries while maintaining order
 pub fn dedup(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let mut unique: Vec<PathBuf> = Vec::new();
+    let mut resolved: HashSet<PathBuf> = HashSet::new();
 
     for path in paths {
-        if seen.contains(path) {
-            unique.push(path.clone());
-        } else {
+        let res = match path.canonicalize() {
+            Ok(p) => p,
+            _ => path.clone(),
+        };
+        if !seen.contains(path) && !resolved.contains(&res) {
             seen.insert(path.clone());
+            resolved.insert(res);
+            unique.push(path.clone());
         }
     }
     unique
@@ -125,10 +149,26 @@ pub fn ensure_unique_addition(
     let unique_paths = split_hs(path_var);
     ensure!(
         !unique_paths.contains(&path_to_add),
-        format!(
-            "PATH already contains '{}'",
-            addition.as_ref().to_string_lossy()
-        )
+        format!("PATH already contains '{}'", path_to_add.display())
+    );
+    let res = path_to_add.canonicalize().unwrap_or(path_to_add.clone());
+    let unique_resolved: HashSet<PathBuf> =
+        unique_paths.iter().flat_map(|p| p.canonicalize()).collect();
+    ensure!(
+        !unique_resolved.contains(&res),
+        if path_to_add.as_os_str() == res.as_os_str() {
+            format!(
+                "PATH already contains a path that resolves to '{}'",
+                path_to_add.display()
+            )
+        } else {
+            format!(
+                "'{}' -> '{}', PATH already contains a path that resolves to '{}'",
+                path_to_add.display(),
+                res.display(),
+                res.display()
+            )
+        }
     );
     Ok(())
 }
@@ -165,6 +205,7 @@ pub fn validate_addition(path_var: impl AsRef<OsStr>, addition: impl AsRef<OsStr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
 
     struct Test {
         // An example path string
