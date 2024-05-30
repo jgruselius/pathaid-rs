@@ -9,6 +9,7 @@ description = "Simple tool to validate the PATH environment variable"
 anyhow = "*"
 colored = "2"
 clap = "4"
+is_executable = "1"
 
 [profile.release]
 lto = true

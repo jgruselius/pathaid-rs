@@ -46,6 +46,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
+use is_executable::IsExecutable;
 
 // Get the PATH environment variable
 pub fn get_path() -> Result<String> {
@@ -78,8 +79,8 @@ fn join_hs(paths: &HashSet<PathBuf>) -> Result<String> {
 
 // Check if path exists and is a directory
 pub fn exists(path: impl AsRef<Path>) -> bool {
-    match path.as_ref().canonicalize() {
-        Ok(p) => p.exists() && p.is_dir(),
+    match path.as_ref().canonicalize() {               // exists() can probably be removed because
+        Ok(p) => p.exists() && p.is_dir(),      // I think canonicalize() already does it
         _ => false,
     }
 }
@@ -88,7 +89,7 @@ pub fn exists(path: impl AsRef<Path>) -> bool {
 pub fn count_files(path: impl AsRef<Path>) -> Result<usize> {
     Ok(fs::read_dir(path)?
         .filter_map(|d| d.ok().and_then(|p| p.path().canonicalize().ok()))
-        .filter(|p| p.is_file())
+        .filter(|p| p.is_executable())
         .count())
 }
 
