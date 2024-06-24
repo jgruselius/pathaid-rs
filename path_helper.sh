@@ -2,18 +2,26 @@
 
 # Joel Gruselius 2024
 
-list_path() {
+function list_path {
   while read -d : -r x; do
     echo -e "$x"
   done < <(echo "$PATH")
 }
 
-ls_path() {
+function ls_path {
   while read -d : -r x; do
     files=()
     IFS=$'\n' read -r -d '' -A files < <(find -L "$x" -maxdepth 1 -type f -executable)
     echo -e "$x: ${#files[@]}"
   done < <(echo "$PATH")
+}
+
+function count_path {
+  list_path | sort | uniq -c
+}
+
+function dups_in_path {
+  list_path | sort | uniq -dc
 }
 
 function append_path {
