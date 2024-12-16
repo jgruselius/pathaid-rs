@@ -41,12 +41,12 @@ validate_addition(path_var: OsStr, addition: OsStr) -> Result<()>
 */
 
 use anyhow::{anyhow, ensure, Context, Result};
+use is_executable::IsExecutable;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use is_executable::IsExecutable;
 
 // Get the PATH environment variable
 pub fn get_path() -> Result<String> {
@@ -60,7 +60,7 @@ pub fn split(path_var: impl AsRef<OsStr>) -> Vec<PathBuf> {
     env::split_paths(&path_var).collect()
 }
 
-pub fn join(paths: &Vec<PathBuf>) -> Result<String> {
+pub fn join(paths: &[PathBuf]) -> Result<String> {
     let path = env::join_paths(paths).context("unable to join path components")?;
     path.into_string()
         .map_err(|_| anyhow!("OS string contains symbols this program can't deal with"))
@@ -78,15 +78,16 @@ fn join_hs(paths: &HashSet<PathBuf>) -> Result<String> {
 }
 
 // Check if path exists and is a directory
-pub fn exists(path: impl AsRef<Path>) -> bool {
-    match path.as_ref().canonicalize() {               // exists() can probably be removed because
-        Ok(p) => p.exists() && p.is_dir(),      // I think canonicalize() already does it
+pub fn exists(path: &Path) -> bool {
+    match path.canonicalize() {
+        // exists() can probably be removed because
+        Ok(p) => p.exists() && p.is_dir(), // I think canonicalize() already does it
         _ => false,
     }
 }
 
 // Count all executables in a path
-pub fn count_files(path: impl AsRef<Path>) -> Result<usize> {
+pub fn count_files(path: &Path) -> Result<usize> {
     Ok(fs::read_dir(path)?
         .filter_map(|d| d.ok().and_then(|p| p.path().canonicalize().ok()))
         .filter(|p| p.is_executable())
@@ -94,12 +95,12 @@ pub fn count_files(path: impl AsRef<Path>) -> Result<usize> {
 }
 
 // Check if path contains no executables (special case of count_files = 0)
-pub fn is_empty(path: impl AsRef<Path>) -> Result<bool> {
+pub fn is_empty(path: &Path) -> Result<bool> {
     Ok(count_files(path)? == 0)
 }
 
 // Get elements occurring more than once
-pub fn find_duplicates(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
+pub fn find_duplicates(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let mut duplicates: Vec<PathBuf> = Vec::new();
 
@@ -114,7 +115,7 @@ pub fn find_duplicates(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 // Get elements occurring more than once when resolved
-pub fn find_duplicates_resolved(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
+pub fn find_duplicates_resolved(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let mut duplicates: Vec<PathBuf> = Vec::new();
 
@@ -133,7 +134,7 @@ pub fn find_duplicates_resolved(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 // Return unique entries while maintaining order
-pub fn dedup(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
+pub fn dedup(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen: HashSet<PathBuf> = HashSet::new();
     let mut unique: Vec<PathBuf> = Vec::new();
     let mut resolved: HashSet<PathBuf> = HashSet::new();
@@ -153,10 +154,7 @@ pub fn dedup(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 // Verify that addition is not already in path string
-fn ensure_unique_addition(
-    path_var: impl AsRef<OsStr>,
-    addition: impl AsRef<OsStr>,
-) -> Result<()> {
+fn ensure_unique_addition(path_var: impl AsRef<OsStr>, addition: impl AsRef<OsStr>) -> Result<()> {
     let path_to_add = PathBuf::from(&addition);
     let unique_paths = split_hs(path_var);
     ensure!(
@@ -235,16 +233,16 @@ mod tests {
         fn new() -> Self {
             Self {
                 path: OsString::from("/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/local/bin"),
-                paths: (&[
+                paths: [
                     "/usr/local/bin",
                     "/usr/local/sbin",
                     "/usr/bin",
                     "/bin",
                     "/usr/local/bin",
-                ])
-                    .into_iter()
-                    .map(|s| PathBuf::from(s))
-                    .collect(),
+                ]
+                .iter()
+                .map(PathBuf::from)
+                .collect(),
                 addition: String::from("/unique/addition"),
                 dups: vec![PathBuf::from("/usr/local/bin")],
                 // Use the directory of the executing program:
@@ -309,7 +307,7 @@ mod tests {
     fn test_ensure_unique_addition() {
         let test = Test::new();
         ensure_unique_addition(&test.path, &test.addition).unwrap();
-        let existing = test.paths.get(0).unwrap().clone().into_os_string();
+        let existing = test.paths.first().unwrap().clone().into_os_string();
         let res =
             std::panic::catch_unwind(|| ensure_unique_addition(&test.path, &existing).unwrap());
         assert!(res.is_err())
